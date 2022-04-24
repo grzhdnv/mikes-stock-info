@@ -17,16 +17,6 @@ app.get("/:ticker", async (req, res) => {
       .send({ message: "Please provide api key and ticker" });
   }
 
-  // const { data } = await axios.get(
-  //   `https://finance.yahoo.com/quote/MRNA/key-statistics?p=MRNA`
-  // );
-  // const $ = cheerio.load(data);
-  // return res.send({
-  //   data: $('section[data-test="qsp-statistics"] > div:nth-child(2) tr')
-  //     .get()
-  //     .map((val) => $(val).text()),
-  // });
-
   try {
     const stockInfo = await Promise.all(
       ["key-statistics", "history"].map(async (type) => {
@@ -68,37 +58,44 @@ app.get("/:ticker", async (req, res) => {
             "Total Debt/Equity (mrq)",
             "Operating Cash Flow (ttm)",
           ];
+
           const stats = $(
             'section[data-test="qsp-statistics"] > div:nth-child(2) tr'
           )
             .get()
-            .map((val) => $(val).text())
+            .map((val) => {
+              const $ = cheerio.load(val);
+              const keyVals = $("td")
+                .get()
+                .splice(0, 2)
+                .map((val) => $(val).text());
+              return keyVals;
+            })
             .reduce((acc, curr) => {
-              const includedCheck = metrics.reduce((acc, curr2) => {
-                if (acc) {
-                  return true;
-                }
-                return curr.includes(curr2);
-              }, false);
-              if (includedCheck) {
-                const title = metrics.reduce((acc, curr2) => {
-                  if (curr.includes(curr2)) {
-                    return curr2;
-                  }
-                  return acc;
-                }, "");
-                return { ...acc, [title]: curr.replace(title, "") };
-              } else {
+              if (curr.length < 1) {
                 return acc;
               }
+
+              const includedCheck = metrics.reduce((acc, curr2) => {
+                if (acc === true) {
+                  return true;
+                }
+                return curr[0].includes(curr2);
+              }, false);
+
+              if (!includedCheck) {
+                return acc;
+              }
+
+              return { ...acc, [curr[0]]: curr[1] };
             }, {});
-          return { stats };
+          return { financials: stats };
         }
       })
     );
 
     res.status(200).send({
-      data: stockInfo.reduce((acc, curr) => {
+      [ticker]: stockInfo.reduce((acc, curr) => {
         return { ...acc, [Object.keys(curr)[0]]: Object.values(curr)[0] };
       }, {}),
     });
